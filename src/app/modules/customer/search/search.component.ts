@@ -1,127 +1,211 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { SearchService } from '../../../core/services/search.service';
 import { VendorService } from '../../../core/services/vendor.service';
-import { RatingStarsComponent } from '../../../shared/components/rating-stars/rating-stars.component';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
+import { VendorCardComponent } from '../../../shared/components/vendor-card/vendor-card.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { IconComponent } from '../../../shared/components/icon/icon.component';
 import { Vendor } from '../../../core/models';
 
 const QUICK_ITEMS = [
-  { name: 'Tomato', nameHindi: 'टमाटर', emoji: '🍅' },
-  { name: 'Potato', nameHindi: 'आलू', emoji: '🥔' },
-  { name: 'Onion', nameHindi: 'प्याज', emoji: '🧅' },
-  { name: 'Spinach', nameHindi: 'पालक', emoji: '🥬' },
-  { name: 'Carrot', nameHindi: 'गाजर', emoji: '🥕' },
-  { name: 'Cauliflower', nameHindi: 'फूलगोभी', emoji: '🥦' },
-  { name: 'Cucumber', nameHindi: 'खीरा', emoji: '🥒' },
-  { name: 'Brinjal', nameHindi: 'बैगन', emoji: '🍆' },
-  { name: 'Peas', nameHindi: 'मटर', emoji: '🫛' },
-  { name: 'Lemon', nameHindi: 'नींबू', emoji: '🍋' }
+  { name: 'Tomato', nameHindi: 'टमाटर' },
+  { name: 'Potato', nameHindi: 'आलू' },
+  { name: 'Onion', nameHindi: 'प्याज' },
+  { name: 'Spinach', nameHindi: 'पालक' },
+  { name: 'Carrot', nameHindi: 'गाजर' },
+  { name: 'Cauliflower', nameHindi: 'फूलगोभी' },
+  { name: 'Cucumber', nameHindi: 'खीरा' },
+  { name: 'Brinjal', nameHindi: 'बैगन' },
+  { name: 'Peas', nameHindi: 'मटर' },
+  { name: 'Lemon', nameHindi: 'नींबू' },
 ];
 
 @Component({
   selector: 'app-search',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, RatingStarsComponent, SkeletonLoaderComponent],
+  imports: [
+    FormsModule,
+    SkeletonLoaderComponent,
+    VendorCardComponent,
+    EmptyStateComponent,
+    IconComponent,
+  ],
   template: `
-    <div class="min-h-screen bg-[#F2F0EF] py-8">
-      <div class="page-container">
-        <h1 class="mb-6">🔍 Search Vendors</h1>
+    <div class="min-h-screen bg-bg">
+      <!-- Search hero -->
+      <section class="relative overflow-hidden border-b border-line bg-bg-deep">
+        <div class="map-grid pointer-events-none absolute inset-0 opacity-[0.5]"></div>
+        <div
+          class="pointer-events-none absolute -top-40 left-1/2 h-80 w-[38rem] -translate-x-1/2 rounded-full opacity-50"
+          style="background: radial-gradient(circle, var(--brand-soft), transparent 70%)"
+        ></div>
 
-        <!-- Search Bar -->
-        <div class="relative mb-6">
-          <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xl">🔍</span>
-          <input [(ngModel)]="query" (ngModelChange)="onQueryChange($event)"
-                 type="text" placeholder="Search for vegetables, fruits... (English or Hindi)"
-                 class="sm-input pl-12 h-14 text-base shadow-sm">
-          <button *ngIf="query" (click)="clearQuery()"
-                  class="absolute right-4 top-1/2 -translate-y-1/2 text-[#7D7D7D] hover:text-[#252525] text-xl">×</button>
-        </div>
+        <div class="page-container relative py-10 sm:py-14">
+          <div class="mx-auto max-w-2xl text-center">
+            <span class="eyebrow">Produce finder</span>
+            <h1 class="display-title mt-3 text-balance">
+              What are you looking <span class="text-gradient-brand">for today?</span>
+            </h1>
+            <p class="mt-3 text-pretty text-[0.9375rem] leading-relaxed text-fg-3">
+              Search in English or Hindi. We match it against live inventory from every nearby cart.
+            </p>
 
-        <!-- Autocomplete Suggestions -->
-        <div *ngIf="suggestions().length" class="sm-card p-2 mb-4">
-          <button *ngFor="let s of suggestions()" (click)="selectSuggestion(s)"
-                  class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-[#252525] hover:bg-[#F2F0EF] rounded-lg transition-colors text-left">
-            🔍 {{ s }}
-          </button>
-        </div>
-
-        <!-- Quick Filter Chips -->
-        <div *ngIf="!query" class="mb-6">
-          <h3 class="text-sm font-semibold text-[#545454] mb-3 uppercase tracking-wider">Popular searches</h3>
-          <div class="flex flex-wrap gap-2">
-            <button *ngFor="let item of quickItems" (click)="selectSuggestion(item.name)"
-                    class="flex items-center gap-1.5 bg-white border border-[#CFCFCF] rounded-full px-4 py-2 text-sm hover:border-[#7B9699] hover:bg-[#F2F0EF] transition-colors">
-              <span>{{ item.emoji }}</span>
-              <span class="text-[#252525] font-medium">{{ item.name }}</span>
-              <span class="text-[#7D7D7D] text-xs">{{ item.nameHindi }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Seasonal -->
-        <div *ngIf="!query && seasonal().length" class="mb-8">
-          <h3 class="section-title">🌾 In Season Now</h3>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div *ngFor="let item of seasonal().slice(0, 4)"
-                 (click)="selectSuggestion(item.name)"
-                 class="sm-card p-4 text-center cursor-pointer hover:border-[#7B9699] border-2 border-transparent">
-              <img [src]="item.image" [alt]="item.name" class="w-12 h-12 rounded-full mx-auto mb-2 object-cover bg-[#BAC8B1]">
-              <p class="font-medium text-sm text-[#252525]">{{ item.name }}</p>
-              <p class="text-xs text-[#7D7D7D]">{{ item.nameHindi }}</p>
-              <span class="badge-in-stock mt-2 inline-block">In Season</span>
+            <div class="input-group mt-7">
+              <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-fg-3">
+                <app-icon name="search" [size]="18" />
+              </span>
+              <input
+                [(ngModel)]="query"
+                (ngModelChange)="onQueryChange($event)"
+                type="text"
+                autocomplete="off"
+                placeholder="Tomato, palak, टमाटर…"
+                aria-label="Search for produce"
+                class="sm-input h-14 pl-12 pr-12 text-[0.9375rem]"
+              />
+              @if (query) {
+                <button
+                  type="button"
+                  (click)="clearQuery()"
+                  aria-label="Clear search"
+                  class="btn-icon absolute right-2.5 top-1/2 h-9 w-9 -translate-y-1/2"
+                >
+                  <app-icon name="x" [size]="15" />
+                </button>
+              }
             </div>
+
+            <!-- Autocomplete -->
+            @if (suggestions().length) {
+              <div class="sm-card scale-in mt-2 overflow-hidden p-1.5 text-left">
+                @for (s of suggestions(); track s) {
+                  <button
+                    type="button"
+                    (click)="selectSuggestion(s)"
+                    class="flex w-full items-center gap-2.5 rounded-[10px] px-3.5 py-2.5 text-[0.875rem] text-fg-2 transition-colors hover:bg-surface-3 hover:text-fg"
+                  >
+                    <app-icon name="search" [size]="14" class="text-fg-3" />
+                    {{ s }}
+                  </button>
+                }
+              </div>
+            }
           </div>
         </div>
+      </section>
 
-        <!-- Results -->
-        <div *ngIf="query && (loading() || results().length > 0)">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="section-title mb-0">Vendors with "{{ query }}"</h3>
-            <span *ngIf="results().length > 0" class="text-sm text-[#7D7D7D]">{{ results().length }} found</span>
-          </div>
+      <div class="page-container page-section">
+        <!-- Browse state -->
+        @if (!query) {
+          <div class="stagger">
+            <div class="section-head">
+              <div>
+                <h2 class="section-title">Popular right now</h2>
+                <p class="mt-1 text-[0.8125rem] text-fg-3">Tap any item to find vendors stocking it</p>
+              </div>
+            </div>
 
-          <div *ngIf="loading()" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <app-skeleton-loader type="vendor-card" *ngFor="let i of [1,2]"></app-skeleton-loader>
-          </div>
+            <div class="flex flex-wrap gap-2.5">
+              @for (item of quickItems; track item.name) {
+                <button type="button" (click)="selectSuggestion(item.name)" class="chip">
+                  <app-icon name="leaf" [size]="13" class="text-brand-bright" />
+                  <span class="font-semibold text-fg">{{ item.name }}</span>
+                  <span class="text-fg-3">{{ item.nameHindi }}</span>
+                </button>
+              }
+            </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div *ngFor="let vendor of results(); trackBy: trackById" class="vendor-card">
-              <div class="h-36 bg-[#BAC8B1] overflow-hidden relative">
-                <img *ngIf="vendor.coverImage" [src]="vendor.coverImage" [alt]="vendor.shopName"
-                     class="w-full h-full object-cover" loading="lazy">
-                <div *ngIf="!vendor.coverImage" class="w-full h-full flex items-center justify-center text-5xl">🏪</div>
-                <div class="absolute top-2 left-2">
-                  <span [class]="vendor.isOpen ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'"
-                        class="text-xs font-semibold px-2 py-1 rounded-full glass">
-                    {{ vendor.isOpen ? 'Open' : 'Closed' }}
+            @if (seasonal().length) {
+              <div class="mt-12">
+                <div class="section-head">
+                  <div>
+                    <h2 class="section-title">In season</h2>
+                    <p class="mt-1 text-[0.8125rem] text-fg-3">Peak freshness, best prices this month</p>
+                  </div>
+                  <span class="badge badge-success">
+                    <span class="dot dot-open dot-live"></span>
+                    Harvest window
                   </span>
                 </div>
-              </div>
-              <div class="p-4">
-                <h3 class="font-semibold text-[#252525] mb-1">{{ vendor.shopName }}</h3>
-                <p class="text-xs text-[#7D7D7D] mb-2 truncate">📍 {{ vendor.address }}</p>
-                <div class="flex items-center justify-between">
-                  <app-rating-stars [rating]="vendor.rating" [count]="vendor.reviewCount" [showCount]="true" [size]="12"></app-rating-stars>
-                  <a [routerLink]="['/customer/vendor', vendor.id]"
-                     class="text-sm font-semibold text-[#7B9699] hover:underline">View →</a>
+
+                <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                  @for (item of seasonal().slice(0, 8); track item.name) {
+                    <button
+                      type="button"
+                      (click)="selectSuggestion(item.name)"
+                      class="sm-card sm-card-hover group overflow-hidden text-left"
+                    >
+                      <div class="relative aspect-[4/3] overflow-hidden bg-surface-3">
+                        @if (item.image) {
+                          <img
+                            [src]="item.image"
+                            [alt]="item.name"
+                            class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.07]"
+                            loading="lazy"
+                          />
+                        } @else {
+                          <span class="flex h-full w-full items-center justify-center text-fg-3">
+                            <app-icon name="leaf" [size]="30" />
+                          </span>
+                        }
+                        <div
+                          class="pointer-events-none absolute inset-0"
+                          style="background: linear-gradient(to top, rgba(0,0,0,0.7), transparent 60%)"
+                        ></div>
+                        <span class="badge badge-brand absolute left-2.5 top-2.5">Seasonal</span>
+                      </div>
+                      <div class="p-3.5">
+                        <p class="text-[0.875rem] font-bold text-fg">{{ item.name }}</p>
+                        <p class="mt-0.5 text-[0.75rem] text-fg-3">{{ item.nameHindi }}</p>
+                      </div>
+                    </button>
+                  }
                 </div>
               </div>
-            </div>
+            }
           </div>
-        </div>
+        }
+
+        <!-- Loading -->
+        @if (query && loading()) {
+          <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            @for (i of [1, 2, 3]; track i) {
+              <app-skeleton-loader type="vendor-card" />
+            }
+          </div>
+        }
+
+        <!-- Results -->
+        @if (query && !loading() && results().length) {
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">
+                Vendors stocking <span class="text-brand-bright">{{ query }}</span>
+              </h2>
+              <p class="mt-1 text-[0.8125rem] text-fg-3">Sorted by distance from your last known location</p>
+            </div>
+            <span class="badge badge-neutral num">{{ results().length }} results</span>
+          </div>
+
+          <div class="stagger grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            @for (vendor of results(); track vendor.id) {
+              <app-vendor-card [vendor]="vendor" variant="grid" />
+            }
+          </div>
+        }
 
         <!-- No results -->
-        <div *ngIf="query && !loading() && results().length === 0" class="text-center py-16">
-          <div class="text-6xl mb-4">🔍</div>
-          <h3 class="text-[#252525] mb-2">No vendors found for "{{ query }}"</h3>
-          <p class="text-[#7D7D7D] text-sm">Try a different search term or expand your radius on the map</p>
-        </div>
+        @if (query && !loading() && !results().length) {
+          <app-empty-state
+            icon="search"
+            [title]="'No vendors found for &quot;' + query + '&quot;'"
+            description="Try a different spelling, search in Hindi, or widen your radius on the live map."
+          />
+        }
       </div>
     </div>
-  `
+  `,
 })
 export class SearchComponent implements OnInit {
   private searchService = inject(SearchService);
@@ -134,19 +218,24 @@ export class SearchComponent implements OnInit {
   seasonal = signal<any[]>([]);
 
   quickItems = QUICK_ITEMS;
+  private timer: any;
 
   ngOnInit(): void {
-    this.searchService.suggestions$.subscribe(s => this.suggestions.set(s));
-    this.searchService.getSeasonalItems().subscribe({ next: s => this.seasonal.set(s), error: () => {} });
+    this.searchService.suggestions$.subscribe((s) => this.suggestions.set(s));
+    this.searchService.getSeasonalItems().subscribe({
+      next: (s) => this.seasonal.set(s),
+      error: () => {},
+    });
   }
 
   onQueryChange(q: string): void {
     this.searchService.setQuery(q);
-    clearTimeout((this as any)._timer);
+    clearTimeout(this.timer);
     if (q.length > 1) {
       this.loading.set(true);
-      (this as any)._timer = setTimeout(() => this.doSearch(q), 500);
+      this.timer = setTimeout(() => this.doSearch(q), 500);
     } else {
+      this.loading.set(false);
       this.results.set([]);
     }
   }
@@ -154,6 +243,7 @@ export class SearchComponent implements OnInit {
   selectSuggestion(s: string): void {
     this.query = s;
     this.suggestions.set([]);
+    this.loading.set(true);
     this.doSearch(s);
   }
 
@@ -161,16 +251,19 @@ export class SearchComponent implements OnInit {
     this.query = '';
     this.results.set([]);
     this.suggestions.set([]);
+    this.loading.set(false);
   }
 
   private doSearch(q: string): void {
-    // Use user's last known location or default
-    const lat = 28.6139, lng = 77.2090, radius = 5;
+    const lat = 28.6139;
+    const lng = 77.209;
+    const radius = 5;
     this.vendorService.getNearbyVendors({ lat, lng, radius, product: q }).subscribe({
-      next: r => { this.results.set(r.content); this.loading.set(false); },
-      error: () => this.loading.set(false)
+      next: (r) => {
+        this.results.set(r.content);
+        this.loading.set(false);
+      },
+      error: () => this.loading.set(false),
     });
   }
-
-  trackById(_: number, v: Vendor): number { return v.id; }
 }

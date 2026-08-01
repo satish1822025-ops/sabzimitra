@@ -1,31 +1,69 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
 
+/**
+ * Precise star rating. Supports fractional fill (e.g. 4.3 stars) by
+ * clipping an overlaid accent-coloured star row.
+ */
 @Component({
   selector: 'app-rating-stars',
   standalone: true,
-  imports: [CommonModule],
   template: `
-    <div class="flex items-center gap-0.5">
-      <button *ngFor="let star of stars; let i = index"
-              (click)="interactive && rate(i + 1)"
-              (mouseenter)="interactive && setHover(i + 1)"
-              (mouseleave)="interactive && setHover(0)"
-              [class.cursor-pointer]="interactive"
-              [class.cursor-default]="!interactive"
-              class="focus:outline-none transition-transform hover:scale-110"
-              type="button">
-        <svg [attr.width]="size" [attr.height]="size" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                [attr.fill]="getStarColor(i + 1)"
-                stroke="#997E67"
-                [attr.stroke-width]="getStarColor(i + 1) === '#CFCFCF' ? '0' : '0.5'"/>
-        </svg>
-      </button>
-      <span *ngIf="showCount && count > 0" class="text-xs text-[#7D7D7D] ml-1">({{ count }})</span>
-      <span *ngIf="showValue" class="text-sm font-semibold text-[#252525] ml-1">{{ rating.toFixed(1) }}</span>
+    <div class="flex items-center gap-2">
+      <div
+        class="relative inline-flex"
+        [class.cursor-pointer]="interactive"
+        (mouseleave)="hover.set(0)"
+        [attr.role]="interactive ? 'radiogroup' : 'img'"
+        [attr.aria-label]="interactive ? 'Choose a rating' : rating.toFixed(1) + ' out of 5 stars'"
+      >
+        <!-- Empty track -->
+        <div class="flex" [style.gap.px]="gap">
+          @for (s of stars; track s) {
+            <svg [attr.width]="size" [attr.height]="size" viewBox="0 0 24 24" aria-hidden="true">
+              <path [attr.d]="STAR" fill="none" stroke="var(--line-strong)" stroke-width="1.4" />
+            </svg>
+          }
+        </div>
+
+        <!-- Filled overlay -->
+        <div
+          class="pointer-events-none absolute inset-0 flex overflow-hidden"
+          [style.width.%]="fillPercent()"
+          [style.gap.px]="gap"
+        >
+          @for (s of stars; track s) {
+            <svg [attr.width]="size" [attr.height]="size" viewBox="0 0 24 24" class="flex-none" aria-hidden="true">
+              <path [attr.d]="STAR" fill="var(--accent)" />
+            </svg>
+          }
+        </div>
+
+        <!-- Interactive hit areas -->
+        @if (interactive) {
+          <div class="absolute inset-0 flex" [style.gap.px]="gap">
+            @for (s of stars; track s) {
+              <button
+                type="button"
+                class="flex-none"
+                [style.width.px]="size"
+                [style.height.px]="size"
+                (click)="rate(s)"
+                (mouseenter)="hover.set(s)"
+                [attr.aria-label]="s + ' star' + (s > 1 ? 's' : '')"
+              ></button>
+            }
+          </div>
+        }
+      </div>
+
+      @if (showValue) {
+        <span class="num text-sm font-bold text-fg">{{ (hover() || rating).toFixed(1) }}</span>
+      }
+      @if (showCount && count > 0) {
+        <span class="text-xs text-fg-3">({{ count }})</span>
+      }
     </div>
-  `
+  `,
 })
 export class RatingStarsComponent {
   @Input() rating = 0;
@@ -34,21 +72,20 @@ export class RatingStarsComponent {
   @Input() showCount = false;
   @Input() showValue = false;
   @Input() size = 16;
+  @Input() gap = 3;
   @Output() ratingChange = new EventEmitter<number>();
 
-  stars = [1, 2, 3, 4, 5];
-  hoverRating = 0;
+  readonly STAR = 'M12 2.6l2.9 5.9 6.5.95-4.7 4.6 1.1 6.45L12 17.45 6.2 20.5l1.1-6.45-4.7-4.6 6.5-.95z';
+  readonly stars = [1, 2, 3, 4, 5];
+  readonly hover = signal(0);
 
-  getStarColor(index: number): string {
-    const effective = this.hoverRating || this.rating;
-    if (index <= Math.floor(effective)) return '#997E67'; // full star
-    if (index <= effective) return '#CCBEB1'; // partial
-    return '#CFCFCF'; // empty
+  fillPercent(): number {
+    const value = this.hover() || this.rating;
+    return Math.max(0, Math.min(100, (value / 5) * 100));
   }
 
   rate(value: number): void {
+    this.rating = value;
     this.ratingChange.emit(value);
   }
-
-  setHover(value: number): void { this.hoverRating = value; }
 }

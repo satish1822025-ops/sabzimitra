@@ -1,224 +1,385 @@
-import { Component, inject, signal, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, PLATFORM_ID } from '@angular/core';
-import { CommonModule, isPlatformBrowser } from '@angular/common';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+  AfterViewInit,
+  ViewChild,
+  ElementRef,
+  PLATFORM_ID,
+} from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { VendorService } from '../../../core/services/vendor.service';
 import { ChatService } from '../../../core/services/chat.service';
 import { NotificationService } from '../../../core/services/notification.service';
+import { ThemeService } from '../../../core/services/theme.service';
 import { SkeletonLoaderComponent } from '../../../shared/components/skeleton-loader/skeleton-loader.component';
 import { RatingStarsComponent } from '../../../shared/components/rating-stars/rating-stars.component';
+import { VendorCardComponent } from '../../../shared/components/vendor-card/vendor-card.component';
+import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { IconComponent } from '../../../shared/components/icon/icon.component';
 import { Vendor, NearbyVendorsRequest } from '../../../core/models';
 import { environment } from '../../../../environments/environment';
 import { Subscription } from 'rxjs';
 
 declare const google: any;
 
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#1b1b1b' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0e0e0e' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#7d7d7d' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#232a24' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6c8480' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1b1b1b' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3a3a3a' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#14201f' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a5f5e' }] },
+  { featureType: 'administrative', elementType: 'geometry.stroke', stylers: [{ color: '#404040' }] },
+];
+
+const LIGHT_MAP_STYLE = [
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#dbe6e5' }] },
+  { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#f2f0ef' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#545454' }] },
+];
+
+const RADIUS_OPTIONS = [
+  { value: 0.5, label: '500 m' },
+  { value: 1, label: '1 km' },
+  { value: 2, label: '2 km' },
+  { value: 5, label: '5 km' },
+  { value: 10, label: '10 km' },
+];
+
+const SORT_OPTIONS = [
+  { value: 'distance', label: 'Nearest', icon: 'navigation' },
+  { value: 'rating', label: 'Top rated', icon: 'star' },
+  { value: 'price', label: 'Best price', icon: 'rupee' },
+  { value: 'freshness', label: 'Freshest', icon: 'sprout' },
+];
+
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, SkeletonLoaderComponent, RatingStarsComponent],
+  imports: [
+    FormsModule,
+    RouterLink,
+    SkeletonLoaderComponent,
+    RatingStarsComponent,
+    VendorCardComponent,
+    EmptyStateComponent,
+    IconComponent,
+  ],
   template: `
-    <div class="flex h-[calc(100vh-64px)] overflow-hidden bg-[#F2F0EF]">
-      <!-- LEFT: Vendor List Panel -->
-      <div class="w-full md:w-[420px] flex-shrink-0 flex flex-col h-full overflow-hidden bg-white shadow-[2px_0_12px_rgba(37,37,37,0.08)]"
-           [class.hidden]="mobileView() === 'map'">
-
-        <!-- Search & Filters -->
-        <div class="p-4 border-b border-[#E6E6E6] flex-shrink-0">
-          <div class="relative mb-3">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-[#7D7D7D]">🔍</span>
-            <input [(ngModel)]="searchQuery" (ngModelChange)="onSearchChange($event)"
-                   type="text" placeholder="Search vegetables, fruits..."
-                   class="sm-input pl-9 pr-4 h-11">
+    <div class="flex h-[calc(100dvh-4rem)] overflow-hidden md:h-[calc(100dvh-4.5rem)]">
+      <!-- ─────────── LEFT: results panel ─────────── -->
+      <aside
+        class="flex h-full w-full flex-none flex-col overflow-hidden border-r border-line bg-surface md:w-[27rem]"
+        [class.hidden]="mobileView() === 'map'"
+      >
+        <!-- Search + filters -->
+        <div class="flex-none border-b border-line px-4 pb-3.5 pt-4">
+          <div class="input-group">
+            <span class="input-icon"><app-icon name="search" [size]="17" /></span>
+            <input
+              [(ngModel)]="searchQuery"
+              (ngModelChange)="onSearchChange()"
+              type="search"
+              placeholder="Tomatoes, spinach, mangoes…"
+              aria-label="Search produce"
+              class="sm-input has-icon"
+            />
           </div>
 
-          <!-- Filters Row -->
-          <div class="flex gap-2 overflow-x-auto scrollbar-none">
-            <select [(ngModel)]="filters.radius" (ngModelChange)="refreshVendors()"
-                    class="text-xs bg-[#F2F0EF] border border-[#CFCFCF] rounded-full px-3 py-2 flex-shrink-0 text-[#252525] cursor-pointer focus:outline-none focus:border-[#7B9699]">
-              <option value="0.5">500m</option>
-              <option value="1">1 km</option>
-              <option value="2" selected>2 km</option>
-              <option value="5">5 km</option>
-              <option value="10">10 km</option>
-            </select>
-            <select [(ngModel)]="filters.sort" (ngModelChange)="refreshVendors()"
-                    class="text-xs bg-[#F2F0EF] border border-[#CFCFCF] rounded-full px-3 py-2 flex-shrink-0 text-[#252525] cursor-pointer focus:outline-none focus:border-[#7B9699]">
-              <option value="distance">Nearest</option>
-              <option value="rating">Top Rated</option>
-              <option value="price">Cheapest</option>
-              <option value="freshness">Freshest</option>
-            </select>
-            <button (click)="filters.inStockOnly = !filters.inStockOnly; refreshVendors()"
-                    [class]="filters.inStockOnly ? 'badge-in-stock flex-shrink-0 cursor-pointer' : 'text-xs bg-[#F2F0EF] border border-[#CFCFCF] rounded-full px-3 py-2 flex-shrink-0 cursor-pointer text-[#545454]'">
-              ✅ In Stock
+          <div class="scroll-x no-scrollbar mt-3">
+            <div class="relative flex-none">
+              <select
+                [(ngModel)]="filters.radius"
+                (ngModelChange)="refreshVendors()"
+                aria-label="Search radius"
+                class="chip appearance-none pr-8"
+              >
+                @for (opt of radiusOptions; track opt.value) {
+                  <option [value]="opt.value">Within {{ opt.label }}</option>
+                }
+              </select>
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-3">
+                <app-icon name="chevron-down" [size]="13" />
+              </span>
+            </div>
+
+            <div class="relative flex-none">
+              <select
+                [(ngModel)]="filters.sort"
+                (ngModelChange)="refreshVendors()"
+                aria-label="Sort results"
+                class="chip appearance-none pr-8"
+              >
+                @for (opt of sortOptions; track opt.value) {
+                  <option [value]="opt.value">{{ opt.label }}</option>
+                }
+              </select>
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-fg-3">
+                <app-icon name="chevron-down" [size]="13" />
+              </span>
+            </div>
+
+            <button
+              type="button"
+              class="chip flex-none"
+              [class.is-active]="filters.inStockOnly"
+              (click)="filters.inStockOnly = !filters.inStockOnly; refreshVendors()"
+            >
+              <app-icon name="check-circle" [size]="14" /> In stock
             </button>
-            <button (click)="filters.organicOnly = !filters.organicOnly; refreshVendors()"
-                    [class]="filters.organicOnly ? 'badge-verified flex-shrink-0 cursor-pointer' : 'text-xs bg-[#F2F0EF] border border-[#CFCFCF] rounded-full px-3 py-2 flex-shrink-0 cursor-pointer text-[#545454]'">
-              🌱 Organic
+
+            <button
+              type="button"
+              class="chip flex-none"
+              [class.is-active]="filters.organicOnly"
+              (click)="filters.organicOnly = !filters.organicOnly; refreshVendors()"
+            >
+              <app-icon name="sprout" [size]="14" /> Organic
             </button>
           </div>
         </div>
 
-        <!-- Results count -->
-        <div class="px-4 py-2 flex-shrink-0 border-b border-[#F2F0EF]">
-          <p class="text-xs text-[#7D7D7D]">
-            <span class="font-semibold text-[#252525]">{{ vendors().length }}</span> vendors found
-            <span *ngIf="userLocation">near you</span>
+        <!-- Result meta -->
+        <div class="flex flex-none items-center justify-between border-b border-line px-4 py-2.5">
+          <p class="text-xs text-fg-3">
+            <span class="num font-bold text-fg">{{ vendors().length }}</span>
+            {{ vendors().length === 1 ? 'vendor' : 'vendors' }}
+            @if (userLocation()) {
+              <span>near you</span>
+            }
           </p>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 text-[0.6875rem] font-bold uppercase tracking-wider text-fg-3 transition-colors hover:text-fg"
+            (click)="getUserLocation()"
+          >
+            <app-icon name="crosshair" [size]="13" /> Recenter
+          </button>
         </div>
 
-        <!-- Vendor List -->
-        <div class="flex-1 overflow-y-auto p-4 space-y-3">
-          <!-- Loading skeletons -->
-          <ng-container *ngIf="loading()">
-            <app-skeleton-loader type="vendor-card" *ngFor="let i of [1,2,3,4]"></app-skeleton-loader>
-          </ng-container>
+        <!-- List -->
+        <div class="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+          @if (loading()) {
+            @for (i of [1, 2, 3, 4]; track i) {
+              <app-skeleton-loader type="inventory-item" />
+            }
+          } @else if (!userLocation()) {
+            <app-empty-state
+              icon="map-pin"
+              title="Enable location"
+              description="Share your location and we'll surface the freshest stalls within walking distance."
+            >
+              <button type="button" class="btn btn-primary" (click)="getUserLocation()">
+                <app-icon name="navigation" [size]="16" /> Share location
+              </button>
+            </app-empty-state>
+          } @else if (!vendors().length) {
+            <app-empty-state
+              icon="leaf"
+              title="No vendors in range"
+              description="Try widening the radius or clearing a filter to see more shops."
+            >
+              <button type="button" class="btn btn-outline" (click)="resetFilters()">
+                <app-icon name="refresh" [size]="16" /> Reset filters
+              </button>
+            </app-empty-state>
+          } @else {
+            @for (vendor of vendors(); track vendor.id) {
+              <app-vendor-card
+                variant="compact"
+                [vendor]="vendor"
+                [selected]="selectedVendor()?.id === vendor.id"
+                (cardClick)="selectVendor(vendor)"
+              />
+            }
+          }
+        </div>
+      </aside>
 
-          <!-- No location -->
-          <div *ngIf="!loading() && !userLocation" class="text-center py-12">
-            <div class="text-6xl mb-4">📍</div>
-            <h3 class="text-[#252525] font-semibold mb-2">Enable Location</h3>
-            <p class="text-[#7D7D7D] text-sm mb-4">Share your location to find vendors near you</p>
-            <button (click)="getUserLocation()" class="btn-primary mx-auto">
-              📍 Share Location
-            </button>
-          </div>
+      <!-- ─────────── RIGHT: map ─────────── -->
+      <div class="relative flex-1" [class.hidden]="mobileView() === 'list'">
+        <div #mapContainer class="h-full w-full"></div>
 
-          <!-- No results -->
-          <div *ngIf="!loading() && userLocation && vendors().length === 0" class="text-center py-12">
-            <div class="text-6xl mb-4">🥬</div>
-            <h3 class="text-[#252525] font-semibold mb-2">No vendors found</h3>
-            <p class="text-[#7D7D7D] text-sm">Try expanding the radius or removing filters</p>
-          </div>
-
-          <!-- Vendor Cards -->
-          <div *ngFor="let vendor of vendors(); trackBy: trackById"
-               (click)="selectVendor(vendor)"
-               [class]="selectedVendor()?.id === vendor.id ? 'vendor-card border-2 border-[#7B9699]' : 'vendor-card border-2 border-transparent'"
-               class="cursor-pointer">
-
-            <!-- Cover Image -->
-            <div class="relative h-36 bg-[#BAC8B1] overflow-hidden">
-              <img *ngIf="vendor.coverImage" [src]="vendor.coverImage" [alt]="vendor.shopName"
-                   class="w-full h-full object-cover">
-              <div *ngIf="!vendor.coverImage" class="w-full h-full flex items-center justify-center text-5xl">🏪</div>
-              <!-- Status Overlay -->
-              <div class="absolute top-2 left-2">
-                <span [class]="getStatusBadge(vendor)" class="text-xs font-semibold px-2.5 py-1 rounded-full glass">
-                  <span [class]="getStatusDot(vendor)" class="mr-1 inline-block rounded-full w-2 h-2"></span>
-                  {{ vendor.isOpen ? (vendor.status === 'LOW_STOCK' ? 'Low Stock' : 'Open') : 'Closed' }}
-                </span>
-              </div>
-              <!-- Subscription badge -->
-              <div *ngIf="vendor.subscriptionTier !== 'FREE'" class="absolute top-2 right-2">
-                <span class="badge-pro text-xs">⭐ {{ vendor.subscriptionTier }}</span>
-              </div>
+        @if (mapLoading()) {
+          <div class="absolute inset-0 flex items-center justify-center bg-bg">
+            <div class="flex flex-col items-center gap-3">
+              <span class="spinner text-brand" style="width: 2rem; height: 2rem; border-width: 2.5px"></span>
+              <p class="text-xs uppercase tracking-widest text-fg-3">Loading map</p>
             </div>
+          </div>
+        }
 
-            <div class="p-3">
-              <div class="flex items-start justify-between gap-2 mb-1">
-                <div class="flex items-center gap-1.5">
-                  <h3 class="font-semibold text-[#252525] text-sm">{{ vendor.shopName }}</h3>
-                  <span *ngIf="vendor.isVerified" class="text-xs">✅</span>
-                </div>
-                <app-rating-stars [rating]="vendor.rating" [count]="vendor.reviewCount"
-                                  [showCount]="true" [size]="12"></app-rating-stars>
-              </div>
-              <p class="text-xs text-[#7D7D7D] mb-2 truncate">📍 {{ vendor.address }}</p>
-              <div class="flex items-center justify-between">
-                <div class="flex gap-1.5 flex-wrap">
-                  <span *ngFor="let method of vendor.paymentMethods.slice(0, 2)"
-                        class="text-xs bg-[#F2F0EF] text-[#545454] px-2 py-0.5 rounded-full">
-                    {{ method }}
+        <!-- Elegant fallback when no Maps key is configured -->
+        @if (!mapLoading() && !mapReady()) {
+          <div class="map-canvas absolute inset-0">
+            <div class="map-grid"></div>
+
+            <!-- Decorative vendor pins from the live result set -->
+            @for (pin of pins(); track pin.id) {
+              <button
+                type="button"
+                class="map-pin"
+                [class.is-active]="selectedVendor()?.id === pin.id"
+                [style.left.%]="pin.x"
+                [style.top.%]="pin.y"
+                (click)="selectVendor(pin.vendor)"
+                [attr.aria-label]="pin.vendor.shopName"
+              >
+                <span class="flex flex-col items-center gap-1">
+                  <span
+                    class="flex h-9 w-9 items-center justify-center rounded-full border shadow-md"
+                    [style.background]="selectedVendor()?.id === pin.id ? 'var(--brand)' : 'var(--surface)'"
+                    [style.border-color]="'var(--line-2)'"
+                    [style.color]="selectedVendor()?.id === pin.id ? 'var(--brand-fg)' : 'var(--brand-bright)'"
+                  >
+                    <app-icon name="store" [size]="17" />
                   </span>
-                </div>
-                <span *ngIf="vendor.distance != null" class="text-xs text-[#7B9699] font-medium flex-shrink-0">
-                  📍 {{ formatDistance(vendor.distance) }}
+                  <span
+                    class="max-w-[7rem] truncate rounded-full border border-line-2 bg-surface px-2 py-0.5 text-[0.625rem] font-bold text-fg"
+                  >
+                    {{ pin.vendor.shopName }}
+                  </span>
                 </span>
+              </button>
+            }
+
+            <!-- You-are-here radar -->
+            <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <span class="radar block h-24 w-24"></span>
+              <span class="radar block h-24 w-24" style="animation-delay: 1.1s"></span>
+              <span
+                class="absolute left-1/2 top-1/2 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-brand"
+                style="box-shadow: 0 0 0 4px var(--brand-soft)"
+              ></span>
+            </div>
+
+            <div class="absolute inset-x-0 bottom-6 flex justify-center px-6">
+              <p
+                class="flex items-center gap-2 rounded-full border border-line-2 bg-surface/80 px-4 py-2 text-[0.6875rem] text-fg-3 backdrop-blur"
+              >
+                <app-icon name="info" [size]="13" />
+                Schematic view — add a Google Maps key in
+                <code class="rounded bg-surface-3 px-1.5 py-0.5 text-[0.625rem] text-fg-2">environment.ts</code>
+                for live streets.
+              </p>
+            </div>
+          </div>
+        }
+
+        <!-- Selected vendor sheet -->
+        @if (selectedVendor(); as vendor) {
+          <div
+            class="glass absolute inset-x-4 bottom-20 rounded-lg p-4 shadow-lg scale-in md:inset-x-auto md:bottom-6 md:right-6 md:w-[22rem]"
+          >
+            <div class="flex items-start gap-3">
+              <div class="h-12 w-12 flex-none overflow-hidden rounded-md bg-surface-3">
+                @if (vendor.shopImage || vendor.coverImage) {
+                  <img
+                    [src]="vendor.shopImage || vendor.coverImage"
+                    [alt]="vendor.shopName"
+                    class="h-full w-full object-cover"
+                  />
+                } @else {
+                  <span class="flex h-full w-full items-center justify-center text-fg-3">
+                    <app-icon name="store" [size]="20" />
+                  </span>
+                }
               </div>
+
+              <div class="min-w-0 flex-1">
+                <h3 class="flex items-center gap-1.5 truncate text-sm font-bold text-fg">
+                  <span class="truncate">{{ vendor.shopName }}</span>
+                  @if (vendor.isVerified) {
+                    <span class="text-brand-bright"><app-icon name="shield-check" [size]="13" /></span>
+                  }
+                </h3>
+                <app-rating-stars [rating]="vendor.rating" [showValue]="true" [size]="12" />
+              </div>
+
+              <button type="button" class="btn-icon h-8 w-8" (click)="clearSelection()" aria-label="Close">
+                <app-icon name="close" [size]="14" />
+              </button>
+            </div>
+
+            <div class="mt-3 flex items-center gap-3 text-[0.6875rem] text-fg-3">
+              <span class="flex items-center gap-1"><app-icon name="clock" [size]="12" />{{ vendor.openingHours }}–{{ vendor.closingHours }}</span>
+              @if (vendor.distance != null) {
+                <span class="flex items-center gap-1"><app-icon name="navigation" [size]="12" />{{ formatDistance(vendor.distance) }}</span>
+              }
+            </div>
+
+            <div class="mt-4 flex gap-2">
+              <a [routerLink]="['/customer/vendor', vendor.id]" class="btn btn-primary btn-sm flex-1">
+                View shop
+              </a>
+              <a [href]="getDirectionsUrl(vendor)" target="_blank" rel="noopener" class="btn btn-outline btn-sm flex-1">
+                <app-icon name="route" [size]="15" /> Navigate
+              </a>
+              <a [href]="'tel:' + vendor.phone" class="btn-icon h-9 w-9" [attr.aria-label]="'Call ' + vendor.shopName">
+                <app-icon name="phone" [size]="15" />
+              </a>
             </div>
           </div>
-        </div>
+        }
       </div>
 
-      <!-- RIGHT: Map -->
-      <div class="flex-1 relative" [class.hidden]="mobileView() === 'list'">
-        <div #mapContainer id="google-map" class="w-full h-full"></div>
-
-        <!-- Map Loading overlay -->
-        <div *ngIf="mapLoading()" class="absolute inset-0 bg-[#F2F0EF] flex items-center justify-center">
-          <div class="text-center">
-            <div class="w-12 h-12 border-4 border-[#7B9699] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-            <p class="text-[#7D7D7D] text-sm">Loading map...</p>
-          </div>
-        </div>
-
-        <!-- No map API key placeholder -->
-        <div *ngIf="!mapLoading() && !mapReady()"
-             class="absolute inset-0 bg-gradient-to-br from-[#BAC8B1] to-[#7B9699] flex flex-col items-center justify-center">
-          <div class="text-center text-white px-6">
-            <div class="text-6xl mb-4">🗺️</div>
-            <h3 class="text-xl font-bold mb-2">Map View</h3>
-            <p class="text-sm opacity-90 mb-4">Add your Google Maps API key in<br><code class="bg-black/20 px-2 py-0.5 rounded text-xs">environment.ts</code></p>
-            <p class="text-xs opacity-75">Vendors will appear as pins once configured</p>
-          </div>
-        </div>
-
-        <!-- Selected Vendor Popup (mobile/desktop) -->
-        <div *ngIf="selectedVendor()"
-             class="absolute bottom-4 left-4 right-4 md:bottom-6 md:left-auto md:right-6 md:w-80 glass rounded-2xl shadow-lg p-4 fade-in">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="w-12 h-12 rounded-xl overflow-hidden bg-[#BAC8B1] flex-shrink-0">
-              <img *ngIf="selectedVendor()!.shopImage" [src]="selectedVendor()!.shopImage"
-                   [alt]="selectedVendor()!.shopName" class="w-full h-full object-cover">
-              <span *ngIf="!selectedVendor()!.shopImage" class="w-full h-full flex items-center justify-center text-2xl">🏪</span>
-            </div>
-            <div class="flex-1 min-w-0">
-              <h3 class="font-semibold text-[#252525] truncate">{{ selectedVendor()!.shopName }}</h3>
-              <app-rating-stars [rating]="selectedVendor()!.rating" [showValue]="true" [size]="13"></app-rating-stars>
-            </div>
-            <button (click)="clearSelection()" class="text-[#7D7D7D] hover:text-[#252525] text-xl">✕</button>
-          </div>
-          <div class="flex gap-2">
-            <a [routerLink]="['/customer/vendor', selectedVendor()!.id]" class="btn-primary text-sm py-2 px-4 flex-1 justify-center">
-              View Shop
-            </a>
-            <a [href]="getDirectionsUrl(selectedVendor()!)" target="_blank"
-               class="btn-secondary text-sm py-2 px-4 flex-1 justify-center">
-              🗺️ Navigate
-            </a>
-            <a [href]="'tel:' + selectedVendor()!.phone"
-               class="w-10 h-10 flex items-center justify-center bg-[#BAC8B1] text-[#404E3B] rounded-full hover:bg-[#7B9699] hover:text-white transition-colors">
-              📞
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Mobile Toggle Tabs -->
-      <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#E6E6E6] flex z-50">
-        <button (click)="mobileView.set('list')"
-                [class]="mobileView() === 'list' ? 'flex-1 py-3 text-[#7B9699] font-semibold text-sm' : 'flex-1 py-3 text-[#7D7D7D] text-sm'"
-                class="flex flex-col items-center gap-0.5">
-          <span>📋</span><span>List</span>
+      <!-- Mobile view switch -->
+      <div
+        class="fixed inset-x-0 bottom-0 z-[210] flex border-t border-line bg-surface/90 backdrop-blur md:hidden"
+        role="tablist"
+      >
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="mobileView() === 'list'"
+          class="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] font-bold uppercase tracking-wider transition-colors"
+          [class.text-brand-bright]="mobileView() === 'list'"
+          [class.text-fg-3]="mobileView() !== 'list'"
+          (click)="mobileView.set('list')"
+        >
+          <app-icon name="list" [size]="18" /> List
         </button>
-        <button (click)="mobileView.set('map')"
-                [class]="mobileView() === 'map' ? 'flex-1 py-3 text-[#7B9699] font-semibold text-sm' : 'flex-1 py-3 text-[#7D7D7D] text-sm'"
-                class="flex flex-col items-center gap-0.5">
-          <span>🗺️</span><span>Map</span>
+        <button
+          type="button"
+          role="tab"
+          [attr.aria-selected]="mobileView() === 'map'"
+          class="flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[0.6875rem] font-bold uppercase tracking-wider transition-colors"
+          [class.text-brand-bright]="mobileView() === 'map'"
+          [class.text-fg-3]="mobileView() !== 'map'"
+          (click)="mobileView.set('map')"
+        >
+          <app-icon name="map" [size]="18" /> Map
         </button>
       </div>
     </div>
-  `
+  `,
 })
 export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
-  @ViewChild('mapContainer') mapContainer!: ElementRef;
+  @ViewChild('mapContainer') mapContainer!: ElementRef<HTMLElement>;
 
   private vendorService = inject(VendorService);
   private chatService = inject(ChatService);
   private notifService = inject(NotificationService);
+  private themeService = inject(ThemeService);
   private platformId = inject(PLATFORM_ID);
+
+  readonly radiusOptions = RADIUS_OPTIONS;
+  readonly sortOptions = SORT_OPTIONS;
 
   vendors = signal<Vendor[]>([]);
   selectedVendor = signal<Vendor | null>(null);
@@ -226,90 +387,116 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
   mapLoading = signal(true);
   mapReady = signal(false);
   mobileView = signal<'list' | 'map'>('list');
+  userLocation = signal<{ lat: number; lng: number } | null>(null);
 
-  userLocation: { lat: number; lng: number } | null = null;
   searchQuery = '';
   filters: Partial<NearbyVendorsRequest> = {
     radius: 2,
     sort: 'distance',
     inStockOnly: false,
-    organicOnly: false
+    organicOnly: false,
   };
+
+  /** Deterministic schematic layout used by the no-API-key fallback map. */
+  readonly pins = computed(() =>
+    this.vendors()
+      .slice(0, 9)
+      .map((vendor, i) => {
+        const angle = (i / 9) * Math.PI * 2 + 0.6;
+        const ring = 16 + (i % 3) * 11;
+        return {
+          id: vendor.id,
+          vendor,
+          x: 50 + Math.cos(angle) * ring * 1.45,
+          y: 48 + Math.sin(angle) * ring,
+        };
+      })
+  );
 
   private map: any;
   private markers: any[] = [];
   private subscription?: Subscription;
+  private searchTimer?: ReturnType<typeof setTimeout>;
 
   ngOnInit(): void {
     this.getUserLocation();
-    // WebSocket connection is optional — only connect if backend is available.
-    // Errors are swallowed in ChatService so this won't crash the map page.
-    try { this.chatService.connect(); } catch {}
+    try {
+      this.chatService.connect();
+    } catch {
+      /* realtime is optional */
+    }
   }
 
   ngAfterViewInit(): void {
-    if (isPlatformBrowser(this.platformId)) {
-      this.loadGoogleMaps();
-    }
+    if (isPlatformBrowser(this.platformId)) this.loadGoogleMaps();
   }
 
   ngOnDestroy(): void {
     this.subscription?.unsubscribe();
+    clearTimeout(this.searchTimer);
     this.chatService.disconnect();
   }
 
   getUserLocation(): void {
     if (!navigator.geolocation) {
-      this.notifService.error('Geolocation not supported by your browser');
+      this.notifService.error('Geolocation is not supported by this browser.');
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        this.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        this.userLocation.set(loc);
         this.refreshVendors();
-        if (this.map) this.map.setCenter(this.userLocation);
+        this.map?.setCenter(loc);
       },
       () => {
-        // Default to Delhi NCR for demo
-        this.userLocation = { lat: 28.6139, lng: 77.2090 };
+        this.userLocation.set({ lat: 28.6139, lng: 77.209 });
         this.refreshVendors();
-        this.notifService.info('Using default location. Enable GPS for accurate results.');
+        this.notifService.info('Using a default location. Enable GPS for precise results.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }
 
   refreshVendors(): void {
-    if (!this.userLocation) return;
+    const loc = this.userLocation();
+    if (!loc) return;
     this.loading.set(true);
     const req: NearbyVendorsRequest = {
-      lat: this.userLocation.lat,
-      lng: this.userLocation.lng,
-      radius: this.filters.radius ?? 2,
-      sort: this.filters.sort as any,
+      lat: loc.lat,
+      lng: loc.lng,
+      radius: Number(this.filters.radius ?? 2),
+      sort: this.filters.sort as NearbyVendorsRequest['sort'],
       inStockOnly: this.filters.inStockOnly,
       organicOnly: this.filters.organicOnly,
-      product: this.searchQuery || undefined
+      product: this.searchQuery || undefined,
     };
     this.vendorService.getNearbyVendors(req).subscribe({
       next: (res) => {
         this.vendors.set(res.content);
         this.loading.set(false);
         this.updateMapMarkers(res.content);
-        res.content.forEach(v => {
-          try { this.chatService.subscribeToVendorStock(v.id); } catch {}
+        res.content.forEach((v) => {
+          try {
+            this.chatService.subscribeToVendorStock(v.id);
+          } catch {
+            /* realtime is optional */
+          }
         });
       },
-      error: () => {
-        // Backend not running — show empty state gracefully
-        this.loading.set(false);
-      }
+      error: () => this.loading.set(false),
     });
   }
 
-  onSearchChange(q: string): void {
-    clearTimeout((this as any)._searchTimer);
-    (this as any)._searchTimer = setTimeout(() => this.refreshVendors(), 400);
+  onSearchChange(): void {
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.refreshVendors(), 400);
+  }
+
+  resetFilters(): void {
+    this.filters = { radius: 5, sort: 'distance', inStockOnly: false, organicOnly: false };
+    this.searchQuery = '';
+    this.refreshVendors();
   }
 
   selectVendor(vendor: Vendor): void {
@@ -320,31 +507,19 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  clearSelection(): void { this.selectedVendor.set(null); }
+  clearSelection(): void {
+    this.selectedVendor.set(null);
+  }
 
   getDirectionsUrl(vendor: Vendor): string {
     return `https://www.google.com/maps/dir/?api=1&destination=${vendor.lat},${vendor.lng}`;
   }
 
   formatDistance(d: number): string {
-    return d < 1 ? `${Math.round(d * 1000)}m` : `${d.toFixed(1)}km`;
+    return d < 1 ? `${Math.round(d * 1000)} m` : `${d.toFixed(1)} km`;
   }
 
-  trackById(_: number, v: Vendor): number { return v.id; }
-
-  getStatusBadge(v: Vendor): string {
-    if (!v.isOpen) return 'bg-red-50 text-red-600';
-    if (v.status === 'LOW_STOCK') return 'bg-yellow-50 text-yellow-700';
-    return 'bg-green-50 text-green-700';
-  }
-
-  getStatusDot(v: Vendor): string {
-    if (!v.isOpen) return 'bg-red-500 status-closed';
-    if (v.status === 'LOW_STOCK') return 'bg-yellow-400 status-low';
-    return 'bg-green-500 status-open';
-  }
-
-  // ── Google Maps ─────────────────────────────────────────────
+  // ── Google Maps ───────────────────────────────────────────
 
   private loadGoogleMaps(): void {
     if ((window as any).google?.maps) {
@@ -353,7 +528,6 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     const apiKey = environment.googleMapsApiKey;
     if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY') {
-      // No API key set — just hide the loading spinner and show placeholder
       this.mapLoading.set(false);
       return;
     }
@@ -367,35 +541,30 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private initMap(): void {
-    const center = this.userLocation ?? { lat: 28.6139, lng: 77.2090 };
+    const center = this.userLocation() ?? { lat: 28.6139, lng: 77.209 };
     this.map = new google.maps.Map(this.mapContainer.nativeElement, {
       center,
       zoom: 14,
       mapTypeControl: false,
       streetViewControl: false,
       fullscreenControl: false,
-      styles: [
-        { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#a8d5e2' }] },
-        { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#f2f0ef' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
-        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#545454' }] }
-      ]
+      clickableIcons: false,
+      styles: this.themeService.isDark() ? DARK_MAP_STYLE : LIGHT_MAP_STYLE,
     });
 
-    // User location marker
     new google.maps.Marker({
       position: center,
       map: this.map,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: 10,
+        scale: 8,
         fillColor: '#7B9699',
         fillOpacity: 1,
-        strokeColor: '#fff',
-        strokeWeight: 3
+        strokeColor: '#0E0E0E',
+        strokeWeight: 3,
       },
-      title: 'You are here'
+      title: 'You are here',
+      zIndex: 999,
     });
 
     this.mapLoading.set(false);
@@ -405,10 +574,10 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private updateMapMarkers(vendors: Vendor[]): void {
     if (!this.map) return;
-    this.markers.forEach(m => m.setMap(null));
+    this.markers.forEach((m) => m.setMap(null));
     this.markers = [];
-    vendors.forEach(vendor => {
-      const color = vendor.isOpen ? (vendor.status === 'LOW_STOCK' ? '#FFC107' : '#4CAF50') : '#F44336';
+    vendors.forEach((vendor) => {
+      const color = !vendor.isOpen ? '#7D7D7D' : vendor.status === 'LOW_STOCK' ? '#FFDBBB' : '#BAC8B1';
       const marker = new google.maps.Marker({
         position: { lat: vendor.lat, lng: vendor.lng },
         map: this.map,
@@ -417,11 +586,11 @@ export class MapComponent implements OnInit, OnDestroy, AfterViewInit {
           path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
           fillColor: color,
           fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 1.5,
-          anchor: new google.maps.Point(12, 22)
-        }
+          strokeColor: '#0E0E0E',
+          strokeWeight: 1.5,
+          scale: 1.4,
+          anchor: new google.maps.Point(12, 22),
+        },
       });
       marker.addListener('click', () => this.selectVendor(vendor));
       this.markers.push(marker);

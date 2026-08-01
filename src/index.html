@@ -1,17 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="theme-dark">
 <head>
   <meta charset="utf-8">
-  <title>SabziMitra – Fresh Veggies Near You</title>
+  <title>SabziMitra — Fresh Produce, Curated Near You</title>
   <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Find fresh vegetables and fruits from vendors near you. Real-time inventory, live prices, and direct contact.">
-  <meta name="theme-color" content="#7B9699">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Discover verified vendors near you with live inventory, real-time prices and direct contact. Fresh produce, beautifully sourced.">
+  <meta name="theme-color" content="#0E0E0E">
+  <meta name="color-scheme" content="dark light">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <!-- Google Fonts -->
+
+  <!-- Typography: Instrument Serif (display) + Plus Jakarta Sans (UI) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    // Apply stored theme before first paint to avoid a flash.
+    (function () {
+      try {
+        var stored = localStorage.getItem('sabzimitra-theme');
+        var theme = stored === 'light' ? 'theme-light' : 'theme-dark';
+        document.documentElement.classList.remove('theme-dark', 'theme-light');
+        document.documentElement.classList.add(theme);
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>
