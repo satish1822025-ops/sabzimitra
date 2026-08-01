@@ -6,29 +6,39 @@ import { FooterComponent } from './shared/components/footer/footer.component';
 import { ToastComponent } from './shared/components/toast/toast.component';
 import { AuthService } from './core/services/auth.service';
 import { NotificationService } from './core/services/notification.service';
+import { ThemeService } from './core/services/theme.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
   imports: [RouterOutlet, CommonModule, HeaderComponent, FooterComponent, ToastComponent],
-  // Explicit template — do not rely on app.html
   template: `
-    <div class="min-h-screen flex flex-col bg-[#F2F0EF]">
-      <app-header></app-header>
-      <main class="flex-1">
-        <router-outlet></router-outlet>
+    <div class="relative flex min-h-dvh flex-col bg-bg text-fg">
+      <a
+        href="#main"
+        class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[600] focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-brand-fg"
+      >
+        Skip to content
+      </a>
+
+      <app-header />
+
+      <main id="main" class="relative z-[1] flex-1">
+        <router-outlet />
       </main>
-      <app-footer></app-footer>
-      <app-toast></app-toast>
+
+      <app-footer />
+      <app-toast />
     </div>
-  `
+  `,
 })
 export class App implements OnInit {
   private authService = inject(AuthService);
   private notifService = inject(NotificationService);
+  // Instantiated so the stored theme is applied and kept in sync app-wide.
+  private themeService = inject(ThemeService);
 
   ngOnInit(): void {
-    // Refresh user session on app startup
     if (this.authService.getAccessToken()) {
       this.authService.fetchCurrentUser().subscribe({ error: () => {} });
       this.notifService.loadNotifications().subscribe({ error: () => {} });

@@ -1,68 +1,110 @@
 import { Component, Input } from '@angular/core';
-import { CommonModule } from '@angular/common';
+
+export type SkeletonType =
+  | 'vendor-card'
+  | 'inventory-item'
+  | 'stat-card'
+  | 'text'
+  | 'map'
+  | 'profile'
+  | 'row'
+  | 'default';
 
 @Component({
   selector: 'app-skeleton-loader',
   standalone: true,
-  imports: [CommonModule],
   template: `
-    <ng-container [ngSwitch]="type">
-      <!-- Vendor Card Skeleton -->
-      <div *ngSwitchCase="'vendor-card'" class="sm-card p-4">
-        <div class="skeleton h-40 w-full rounded-lg mb-3"></div>
-        <div class="skeleton h-4 w-3/4 rounded mb-2"></div>
-        <div class="skeleton h-3 w-1/2 rounded mb-3"></div>
-        <div class="flex gap-2">
-          <div class="skeleton h-6 w-16 rounded-full"></div>
-          <div class="skeleton h-6 w-16 rounded-full"></div>
-        </div>
-      </div>
-
-      <!-- Inventory Item Skeleton -->
-      <div *ngSwitchCase="'inventory-item'" class="flex items-center gap-3 p-3 bg-white rounded-xl border border-[#E6E6E6]">
-        <div class="skeleton w-14 h-14 rounded-lg flex-shrink-0"></div>
-        <div class="flex-1">
-          <div class="skeleton h-4 w-2/3 rounded mb-2"></div>
-          <div class="skeleton h-3 w-1/3 rounded"></div>
-        </div>
-        <div class="skeleton h-6 w-20 rounded-full"></div>
-      </div>
-
-      <!-- Text Block Skeleton -->
-      <div *ngSwitchCase="'text'" class="space-y-2">
-        <div *ngFor="let i of [].constructor(lines)" class="skeleton rounded" [style.height]="'1rem'" [style.width]="getWidth()"></div>
-      </div>
-
-      <!-- Map Pin Skeleton -->
-      <div *ngSwitchCase="'map'" class="skeleton rounded-2xl" style="height: 400px; width: 100%;"></div>
-
-      <!-- Profile Skeleton -->
-      <div *ngSwitchCase="'profile'" class="sm-card p-6">
-        <div class="flex items-center gap-4 mb-4">
-          <div class="skeleton w-20 h-20 rounded-full"></div>
-          <div class="flex-1">
-            <div class="skeleton h-5 w-2/3 rounded mb-2"></div>
-            <div class="skeleton h-4 w-1/2 rounded"></div>
+    @switch (type) {
+      @case ('vendor-card') {
+        <div class="sm-card overflow-hidden">
+          <div class="skeleton h-40 w-full rounded-none"></div>
+          <div class="flex flex-col gap-3 p-4">
+            <div class="skeleton h-4 w-2/3"></div>
+            <div class="skeleton h-3 w-2/5"></div>
+            <div class="flex gap-2 pt-1">
+              <div class="skeleton h-6 w-20 rounded-full"></div>
+              <div class="skeleton h-6 w-16 rounded-full"></div>
+            </div>
           </div>
         </div>
-        <div class="skeleton h-3 w-full rounded mb-2"></div>
-        <div class="skeleton h-3 w-3/4 rounded"></div>
-      </div>
-
-      <!-- Default -->
-      <div *ngSwitchDefault class="skeleton rounded" [style.height]="height" [style.width]="width"></div>
-    </ng-container>
-  `
+      }
+      @case ('inventory-item') {
+        <div class="sm-card flex items-center gap-3.5 p-3.5">
+          <div class="skeleton h-14 w-14 flex-none rounded-md"></div>
+          <div class="flex flex-1 flex-col gap-2">
+            <div class="skeleton h-4 w-2/5"></div>
+            <div class="skeleton h-3 w-1/4"></div>
+          </div>
+          <div class="skeleton h-7 w-20 rounded-full"></div>
+        </div>
+      }
+      @case ('stat-card') {
+        <div class="sm-card flex flex-col gap-3 p-5">
+          <div class="skeleton h-8 w-8 rounded-full"></div>
+          <div class="skeleton h-7 w-24"></div>
+          <div class="skeleton h-3 w-16"></div>
+        </div>
+      }
+      @case ('text') {
+        <div class="flex flex-col gap-2.5">
+          @for (line of lineArray; track $index) {
+            <div class="skeleton h-3.5" [style.width]="widthFor($index)"></div>
+          }
+        </div>
+      }
+      @case ('row') {
+        <div class="flex items-center gap-4 border-b border-line px-4 py-4">
+          <div class="skeleton h-10 w-10 flex-none rounded-full"></div>
+          <div class="skeleton h-3.5 flex-1"></div>
+          <div class="skeleton h-3.5 w-20"></div>
+          <div class="skeleton h-7 w-16 rounded-full"></div>
+        </div>
+      }
+      @case ('map') {
+        <div class="skeleton w-full rounded-lg" style="height: 26rem"></div>
+      }
+      @case ('profile') {
+        <div class="sm-card p-6">
+          <div class="mb-5 flex items-center gap-4">
+            <div class="skeleton h-20 w-20 rounded-full"></div>
+            <div class="flex flex-1 flex-col gap-2.5">
+              <div class="skeleton h-5 w-1/2"></div>
+              <div class="skeleton h-3.5 w-1/3"></div>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2.5">
+            <div class="skeleton h-3 w-full"></div>
+            <div class="skeleton h-3 w-4/5"></div>
+          </div>
+        </div>
+      }
+      @default {
+        <div class="skeleton" [style.height]="height" [style.width]="width"></div>
+      }
+    }
+  `,
 })
 export class SkeletonLoaderComponent {
-  @Input() type: 'vendor-card' | 'inventory-item' | 'text' | 'map' | 'profile' | 'default' = 'default';
-  @Input() lines = 3;
+  @Input() type: SkeletonType = 'default';
   @Input() height = '1rem';
   @Input() width = '100%';
 
-  private widths = ['100%', '85%', '90%', '70%', '80%'];
+  private _lines = 3;
+  @Input()
+  set lines(value: number) {
+    this._lines = value;
+    this.lineArray = Array.from({ length: value });
+  }
+  get lines(): number {
+    return this._lines;
+  }
 
-  getWidth(): string {
-    return this.widths[Math.floor(Math.random() * this.widths.length)];
+  lineArray: unknown[] = Array.from({ length: 3 });
+
+  /** Deterministic widths — avoids layout jitter on re-render. */
+  private readonly widths = ['100%', '88%', '94%', '72%', '82%'];
+
+  widthFor(index: number): string {
+    return this.widths[index % this.widths.length];
   }
 }
